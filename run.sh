@@ -23,9 +23,17 @@ QEMU_BIN="${QEMU_BUILD_DIR}/qemu-system-riscv64"
 RISCV_DIR="${WORK_DIR}/riscv"
 RISCV_IMAGES_DIR="${RISCV_DIR}/images"
 
-OPENSBI_BIN="fw_jump.bin"
+BUILDROOT_DIR="${COMMON_DIR}/buildroot"
+BR_ORG_CUSTOM_DIR="${SCRIPT_DIR}/custom_buildroot"
+BR_CUSTOM_DIR="${COMMON_DIR}/custom_buildroot"
 
-export PATH="${RISCV64_TOOLCHAIN_PATH}:${PATH}"
+BR_RISCV_DIR="${RISCV_DIR}/buildroot"
+BR_RISCV_OUTPUT_DIR="${BR_RISCV_DIR}/output"
+BR_RISCV_CONFIG="qemu_riscv64_virt_riscv_defconfig"
+
+OPENSBI_BIN="fw_jump.bin"
+ROOTFS_BIN="rootfs.img"
+
 
 #===========================================================
 # Functions
@@ -46,7 +54,8 @@ function install_dependencies {
         cmake \
         git \
         ninja-build \
-        python3-venv
+        python3-venv \
+        cpio
 
     echo "🎉 Dependencies installed!"
 }
@@ -152,6 +161,45 @@ function prepare_linux {
     echo "🎉 Linux prepared!"
 }
 
+function build_buildroot {
+    cd "${BR_RISCV_OUTPUT_DIR}"
+
+    # Remove any trailing whitespace from PATH which causes buildroot to fail in WSL
+    PATH="$(echo $PATH | tr -d ' \t\n')"
+
+    make -j$(nproc)
+
+    cp -f "${BR_RISCV_OUTPUT_DIR}/images/rootfs.ext2" "${RISCV_IMAGES_DIR}/${ROOTFS_BIN}"
+
+    cd -
+}
+
+function prepare_buildroot {
+    echo "🚀 Preparing Buildroot..."
+
+    REPO="http://github.com/buildroot/buildroot"
+    BRANCH="2024.11.1"
+    SRC_DIR="${BUILDROOT_DIR}"
+    TARGET_ARCH="riscv"
+
+    if [ ! -d "${SRC_DIR}" ]; then
+        git clone --depth 1 -b "${BRANCH}" --single-branch "${REPO}" "${SRC_DIR}"
+    fi
+
+    cd "${SRC_DIR}"
+
+    # In order not to copy intermediate files into the original overlay directory
+    cp -rf "${BR_ORG_CUSTOM_DIR}" "${COMMON_DIR}"
+
+    make O="${BR_RISCV_OUTPUT_DIR}" BR2_EXTERNAL="${BR_CUSTOM_DIR}" "${BR_RISCV_CONFIG}"
+
+    build_buildroot
+
+    cd -
+
+    echo "🎉 Buildroot prepared!"
+}
+
 function run_qemu {
     echo "🚀 Running QEMU..."
 
@@ -179,6 +227,7 @@ function setup {
     prepare_qemu
     prepare_opensbi
     prepare_linux
+    prepare_buildroot
 
     echo "🎉 Workspace setup complete!"
 }
