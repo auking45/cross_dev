@@ -13,11 +13,17 @@ WORK_DIR="${ROOT_DIR}/.work"
 COMMON_DIR="${WORK_DIR}/common"
 TOOLCHAIN_DIR="${COMMON_DIR}/toolchains"
 RISCV64_TOOLCHAIN_PATH="${TOOLCHAIN_DIR}/riscv/bin"
+RISCV64_CROSS_TOOLCHAIN="${RISCV64_TOOLCHAIN_PATH}/riscv64-unknown-linux-gnu-"
 
 QEMU_VERSION="9.2.0"
 QEMU_DIR="${COMMON_DIR}/qemu-${QEMU_VERSION}"
 QEMU_BUILD_DIR="${QEMU_DIR}/build"
 QEMU_BIN="${QEMU_BUILD_DIR}/qemu-system-riscv64"
+
+RISCV_DIR="${WORK_DIR}/riscv"
+RISCV_IMAGES_DIR="${RISCV_DIR}/images"
+
+OPENSBI_BIN="fw_jump.bin"
 
 export PATH="${RISCV64_TOOLCHAIN_PATH}:${PATH}"
 
@@ -92,14 +98,42 @@ function prepare_qemu {
     echo "🎉 QEMU prepared!"
 }
 
+function prepare_opensbi {
+    echo "🚀 Preparing OpenSBI..."
+
+    REPO="https://github.com/riscv-software-src/opensbi.git"
+    BRANCH="v1.6"
+    SRC_DIR="${RISCV_DIR}/opensbi"
+
+    if [ ! -d "${SRC_DIR}" ]; then
+        git clone -b "${BRANCH}" "${REPO}" "${SRC_DIR}"
+    fi
+
+    cd "${SRC_DIR}"
+
+    export CROSS_COMPILE="${RISCV64_CROSS_TOOLCHAIN}"
+
+    make PLATFORM=generic
+
+    cp -f ./build/platform/generic/firmware/${OPENSBI_BIN} "${RISCV_IMAGES_DIR}/"
+
+    cd -
+
+    echo "🎉 OpenSBI prepared!"
+}
+
+}
+
 function setup {
     echo "🚀 Setting up workspace..."
 
     mkdir -p "${WORK_DIR}"
     mkdir -p "${COMMON_DIR}"
+    mkdir -p "${RISCV_IMAGES_DIR}"
 
     prepare_toolchains
     prepare_qemu
+    prepare_opensbi
 
     echo "🎉 Workspace setup complete!"
 }
