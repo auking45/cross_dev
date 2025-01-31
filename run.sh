@@ -12,7 +12,14 @@ ROOT_DIR=$(git rev-parse --show-toplevel)
 WORK_DIR="${ROOT_DIR}/.work"
 COMMON_DIR="${WORK_DIR}/common"
 TOOLCHAIN_DIR="${COMMON_DIR}/toolchains"
-RISCV64_TOOLCHAIN_PATH="${TOOLCHAIN_DIR}/riscv64/bin"
+RISCV64_TOOLCHAIN_PATH="${TOOLCHAIN_DIR}/riscv/bin"
+
+QEMU_VERSION="9.2.0"
+QEMU_DIR="${COMMON_DIR}/qemu-${QEMU_VERSION}"
+QEMU_BUILD_DIR="${QEMU_DIR}/build"
+QEMU_BIN="${QEMU_BUILD_DIR}/qemu-system-riscv64"
+
+export PATH="${RISCV64_TOOLCHAIN_PATH}:${PATH}"
 
 #===========================================================
 # Functions
@@ -32,7 +39,8 @@ function install_dependencies {
         build-essential \
         cmake \
         git \
-        ninja-build
+        ninja-build \
+        python3-venv
 
     echo "🎉 Dependencies installed!"
 }
@@ -57,6 +65,33 @@ function prepare_toolchains {
     echo "🎉 Toolchains prepared!"
 }
 
+function prepare_qemu {
+    echo "🚀 Preparing QEMU..."
+
+    if [ ! -d "${QEMU_DIR}" ]; then
+        mkdir -p "${QEMU_DIR}"
+        cd "${QEMU_DIR}"
+        wget "https://download.qemu.org/qemu-${QEMU_VERSION}.tar.xz"
+        tar -xf "qemu-${QEMU_VERSION}.tar.xz"
+        rm "qemu-${QEMU_VERSION}.tar.xz"
+        cd -
+    fi
+
+    if [ ! -f "${QEMU_BIN}" ]; then
+        mkdir -p "${QEMU_BUILD_DIR}"
+        cd "${QEMU_BUILD_DIR}"
+        "${QEMU_DIR}/qemu-${QEMU_VERSION}/configure" \
+            --target-list=riscv64-softmmu \
+            --prefix="${QEMU_DIR}"
+        make -j$(nproc)
+        cd -
+    fi
+
+    "${QEMU_BIN}" --version
+
+    echo "🎉 QEMU prepared!"
+}
+
 function setup {
     echo "🚀 Setting up workspace..."
 
@@ -64,6 +99,7 @@ function setup {
     mkdir -p "${COMMON_DIR}"
 
     prepare_toolchains
+    prepare_qemu
 
     echo "🎉 Workspace setup complete!"
 }
