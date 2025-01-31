@@ -31,7 +31,10 @@ BR_RISCV_DIR="${RISCV_DIR}/buildroot"
 BR_RISCV_OUTPUT_DIR="${BR_RISCV_DIR}/output"
 BR_RISCV_CONFIG="qemu_riscv64_virt_riscv_defconfig"
 
+SSH_PORT=12345
+
 OPENSBI_BIN="fw_jump.bin"
+LINUX_BIN="Image"
 ROOTFS_BIN="rootfs.img"
 
 
@@ -154,7 +157,7 @@ function prepare_linux {
 
     make -j$(nproc)
 
-    cp -f ./arch/${TARGET_ARCH}/boot/Image "${RISCV_IMAGES_DIR}/"
+    cp -f ./arch/${TARGET_ARCH}/boot/${LINUX_BIN} "${RISCV_IMAGES_DIR}/"
 
     cd -
 
@@ -208,9 +211,15 @@ function run_qemu {
         -nographic
         -smp 4
         -m 2G
-        -kernel "${RISCV_IMAGES_DIR}/Image"
+        -serial mon:stdio
+        -semihosting-config enable=on
         -bios "${RISCV_IMAGES_DIR}/${OPENSBI_BIN}"
+        -kernel "${RISCV_IMAGES_DIR}/${LINUX_BIN}"
         -append "console=ttyS0 ro root=/dev/vda init=/sbin/init"
+        -drive file="${RISCV_IMAGES_DIR}/${ROOTFS_BIN}",if=none,format=raw,id=hd0
+        -device virtio-blk-device,drive=hd0
+        -netdev user,id=net0,hostfwd=tcp::${SSH_PORT}-:22
+        -device virtio-net-device,netdev=net0
     )
 
     "${QEMU_BIN}" "${ARGS[@]}" "${@}"
