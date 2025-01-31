@@ -152,6 +152,22 @@ function prepare_linux {
     echo "🎉 Linux prepared!"
 }
 
+function run_qemu {
+    echo "🚀 Running QEMU..."
+
+    ARGS=(
+        -machine virt
+        -nographic
+        -smp 4
+        -m 2G
+        -kernel "${RISCV_IMAGES_DIR}/Image"
+        -bios "${RISCV_IMAGES_DIR}/${OPENSBI_BIN}"
+        -append "console=ttyS0 ro root=/dev/vda init=/sbin/init"
+    )
+
+    "${QEMU_BIN}" "${ARGS[@]}" "${@}"
+}
+
 function setup {
     echo "🚀 Setting up workspace..."
 
