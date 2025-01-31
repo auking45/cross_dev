@@ -122,6 +122,34 @@ function prepare_opensbi {
     echo "🎉 OpenSBI prepared!"
 }
 
+function prepare_linux {
+    echo "🚀 Preparing Linux..."
+
+    REPO="git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+    BRANCH="v6.13"
+    SRC_DIR="${COMMON_DIR}/linux"
+    TARGET_ARCH="riscv"
+
+    if [ ! -d "${SRC_DIR}" ]; then
+        git clone --depth 1 -b "${BRANCH}" --single-branch "${REPO}" "${SRC_DIR}"
+    fi
+
+    cd "${SRC_DIR}"
+
+    export ARCH="${TARGET_ARCH}"
+    export CROSS_COMPILE="${RISCV64_CROSS_TOOLCHAIN}"
+
+    make defconfig
+    # if there are extra configs
+    ./scripts/kconfig/merge_config.sh .config "${SCRIPT_DIR}/configs/linux/extra.config"
+
+    make -j$(nproc)
+
+    cp -f ./arch/${TARGET_ARCH}/boot/Image "${RISCV_IMAGES_DIR}/"
+
+    cd -
+
+    echo "🎉 Linux prepared!"
 }
 
 function setup {
@@ -134,6 +162,7 @@ function setup {
     prepare_toolchains
     prepare_qemu
     prepare_opensbi
+    prepare_linux
 
     echo "🎉 Workspace setup complete!"
 }
