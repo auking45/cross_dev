@@ -38,6 +38,8 @@ SSH_DIR="${BR_OVERLAY_DIR}/root/.ssh"
 SSH_KEY="${SSH_DIR}/id_rsa"
 SSH_PORT=12345
 
+GDB_DIR="${SCRIPT_DIR}/gdb"
+
 OPENSBI_BIN="fw_jump.bin"
 LINUX_BIN="Image"
 ROOTFS_BIN="rootfs.img"
@@ -274,6 +276,10 @@ function run_ssh {
     echo "Executing: ${SSH_COMMAND}"
 
     ${SSH_COMMAND}
+}
+
+function run_gdb {
+    gdb-multiarch -x "${GDB_DIR}/.gdbinit" --cd="${GDB_DIR}"
 }
 
 #===========================================================
