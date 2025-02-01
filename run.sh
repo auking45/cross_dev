@@ -26,11 +26,14 @@ RISCV_IMAGES_DIR="${RISCV_DIR}/images"
 BUILDROOT_DIR="${COMMON_DIR}/buildroot"
 BR_ORG_CUSTOM_DIR="${SCRIPT_DIR}/custom_buildroot"
 BR_CUSTOM_DIR="${COMMON_DIR}/custom_buildroot"
+BR_OVERLAY_DIR="${BR_CUSTOM_DIR}/board/riscv/overlay"
 
 BR_RISCV_DIR="${RISCV_DIR}/buildroot"
 BR_RISCV_OUTPUT_DIR="${BR_RISCV_DIR}/output"
 BR_RISCV_CONFIG="qemu_riscv64_virt_riscv_defconfig"
 
+SSH_DIR="${BR_OVERLAY_DIR}/root/.ssh"
+SSH_KEY="${SSH_DIR}/id_rsa"
 SSH_PORT=12345
 
 OPENSBI_BIN="fw_jump.bin"
@@ -194,6 +197,8 @@ function prepare_buildroot {
     # In order not to copy intermediate files into the original overlay directory
     cp -rf "${BR_ORG_CUSTOM_DIR}" "${COMMON_DIR}"
 
+    prepare_ssh_key
+
     make O="${BR_RISCV_OUTPUT_DIR}" BR2_EXTERNAL="${BR_CUSTOM_DIR}" "${BR_RISCV_CONFIG}"
 
     build_buildroot
@@ -202,6 +207,39 @@ function prepare_buildroot {
 
     echo "🎉 Buildroot prepared!"
 }
+
+function prepare_ssh_key {
+    echo "🚀 Preparing SSH..."
+
+    mkdir -p "${SSH_DIR}"
+
+    if [ -f "${SSH_DIR}/id_rsa" ] && [ -f "${SSH_DIR}/authorized_keys" ]; then
+        echo "🎉 SSH key has already been created."
+        return
+    fi
+
+    ssh-keygen -t rsa -N "" -f "${SSH_DIR}/id_rsa" <<< y 2>&1 >/dev/null
+    cat "${SSH_DIR}/id_rsa.pub" >> "${SSH_DIR}/authorized_keys"
+
+    echo "🎉 SSH prepared!"
+}
+
+function setup {
+    echo "🚀 Setting up workspace..."
+
+    mkdir -p "${WORK_DIR}"
+    mkdir -p "${COMMON_DIR}"
+    mkdir -p "${RISCV_IMAGES_DIR}"
+
+    prepare_toolchains
+    prepare_qemu
+    prepare_opensbi
+    prepare_linux
+    prepare_buildroot
+
+    echo "🎉 Workspace setup complete!"
+}
+
 
 function run_qemu {
     echo "🚀 Running QEMU..."
@@ -225,20 +263,13 @@ function run_qemu {
     "${QEMU_BIN}" "${ARGS[@]}" "${@}"
 }
 
-function setup {
-    echo "🚀 Setting up workspace..."
+function run_ssh {
+    echo "🚀 Connecting via SSH..."
 
-    mkdir -p "${WORK_DIR}"
-    mkdir -p "${COMMON_DIR}"
-    mkdir -p "${RISCV_IMAGES_DIR}"
+    SSH_COMMAND="ssh -i ${SSH_KEY} root@localhost -p ${SSH_PORT} -o StrictHostKeyChecking=no"
+    echo "Executing: ${SSH_COMMAND}"
 
-    prepare_toolchains
-    prepare_qemu
-    prepare_opensbi
-    prepare_linux
-    prepare_buildroot
-
-    echo "🎉 Workspace setup complete!"
+    ${SSH_COMMAND}
 }
 
 #===========================================================
