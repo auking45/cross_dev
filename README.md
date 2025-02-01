@@ -14,12 +14,22 @@ Ensure you have the following dependencies installed on your system:
 - ninja-build
 - python3-venv
 - cpio
+- Rust (with nightly toolchain)
 
 You can install these dependencies using the following command:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y git wget tar build-essential cmake ninja-build python3-venv cpio
+```
+
+To install Rust and the required nightly toolchain, use the following commands:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+rustup toolchain install nightly
+rustup default nightly
 ```
 
 ## Setup
