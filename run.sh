@@ -23,6 +23,8 @@ QEMU_BIN="${QEMU_BUILD_DIR}/qemu-system-riscv64"
 RISCV_DIR="${WORK_DIR}/riscv"
 RISCV_IMAGES_DIR="${RISCV_DIR}/images"
 
+LINUX_BUILD_DIR="${RISCV_DIR}/linux"
+
 BUILDROOT_DIR="${COMMON_DIR}/buildroot"
 BR_ORG_CUSTOM_DIR="${SCRIPT_DIR}/custom_buildroot"
 BR_CUSTOM_DIR="${COMMON_DIR}/custom_buildroot"
@@ -149,18 +151,20 @@ function prepare_linux {
         git clone --depth 1 -b "${BRANCH}" --single-branch "${REPO}" "${SRC_DIR}"
     fi
 
-    cd "${SRC_DIR}"
+    mkdir -p "${LINUX_BUILD_DIR}"
+
+    cd "${LINUX_BUILD_DIR}"
 
     export ARCH="${TARGET_ARCH}"
     export CROSS_COMPILE="${RISCV64_CROSS_TOOLCHAIN}"
 
-    make defconfig
+    make O="${LINUX_BUILD_DIR}" -C "${SRC_DIR}" defconfig
     # if there are extra configs
-    ./scripts/kconfig/merge_config.sh .config "${SCRIPT_DIR}/configs/linux/extra.config"
+    "${SRC_DIR}/scripts/kconfig/merge_config.sh" .config "${SCRIPT_DIR}/configs/linux/extra.config"
 
     make -j$(nproc)
 
-    cp -f ./arch/${TARGET_ARCH}/boot/${LINUX_BIN} "${RISCV_IMAGES_DIR}/"
+    cp -f "${LINUX_BUILD_DIR}/arch/${TARGET_ARCH}/boot/${LINUX_BIN}" "${RISCV_IMAGES_DIR}/"
 
     cd -
 
