@@ -36,11 +36,13 @@ struct Paths {
     pub common_dir: String,
     pub toolchain_dir: String,
     pub riscv_toolchain_dir: String,
-    pub riscv_dir:String,
+    pub riscv_cross_toolchain: String,
+    pub riscv_dir: String,
     pub riscv_images_dir: String,
     pub qemu_dir: String,
     pub qemu_build_dir: String,
     pub qemu_bin: String,
+    pub opensbi_dir: String,
 }
 
 impl Paths {
@@ -51,22 +53,26 @@ impl Paths {
         let common_dir = format!("{work_dir}/common");
         let toolchain_dir = format!("{common_dir}/toolchain");
         let riscv_toolchain_dir = format!("{toolchain_dir}/riscv/bin");
+        let riscv_cross_toolchain = format!("{riscv_toolchain_dir}/riscv64-unknown-linux-gnu-");
         let riscv_dir = format!("{work_dir}/riscv");
         let riscv_images_dir = format!("{riscv_dir}/images");
         let qemu_dir = format!("{common_dir}/qemu-{QEMU_VERSION}");
         let qemu_build_dir = format!("{riscv_dir}/qemu/build");
         let qemu_bin = format!("{qemu_build_dir}/qemu-system-riscv64");
+        let opensbi_dir = format!("{riscv_dir}/opensbi");
 
         Self {
             work_dir,
             common_dir,
             toolchain_dir,
             riscv_toolchain_dir,
+            riscv_cross_toolchain,
             riscv_dir,
             riscv_images_dir,
             qemu_dir,
             qemu_build_dir,
             qemu_bin,
+            opensbi_dir,
         }
     }
 }
@@ -135,19 +141,56 @@ fn prepare_qemu() -> Result<()> {
     Ok(())
 }
 
+fn prepare_opensbi() -> Result<()> {
+    let mut sh = Shell::new()?;
+    let paths = PATHS.get().unwrap();
+
+    println!("🚀 Preparing OpenSBI...");
+
+    let repo = "https://github.com/riscv-software-src/opensbi.git";
+    let branch = "v1.6";
+    let opensbi_dir = paths.opensbi_dir.as_str();
+
+    if !sh.path_exists(opensbi_dir) {
+        cmd!(sh, "git clone -b {branch} {repo} {opensbi_dir}").run_echo()?;
+    }
+
+    let envs = [("CROSS_COMPILE", &paths.riscv_cross_toolchain)];
+
+    for (k, v) in envs {
+        sh.set_var(k, v);
+    }
+
+    sh.set_current_dir(opensbi_dir);
+
+    cmd!(sh, "make PLATFORM=generic").run_echo()?;
+
+    let riscv_image_dir = paths.riscv_images_dir.as_str();
+    cmd!(
+        sh,
+        "cp -f ./build/platform/generic/firmware/fw_jump.bin {riscv_image_dir}/"
+    )
+    .run()?;
+
+    println!("✅ OpenSBI is ready!");
+
+    Ok(())
+}
+
 fn setup() -> Result<()> {
     let sh = Shell::new()?;
 
     let paths = PATHS.get().unwrap();
 
     println!("Working directory: {}", paths.work_dir);
- 
+
     sh.create_dir(&paths.work_dir)?;
     sh.create_dir(&paths.common_dir)?;
     sh.create_dir(&paths.riscv_images_dir)?;
 
     prepare_toolchain()?;
     prepare_qemu()?;
+    prepare_opensbi()?;
 
     Ok(())
 }
