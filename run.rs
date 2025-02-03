@@ -7,9 +7,9 @@ color-eyre = { version = "0.6" }
 xshell = { version = "0.3.0-pre.2" }
 ---
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use color_eyre::eyre::Result;
-use std::sync::OnceLock;
+use std::{env, process::Command, sync::OnceLock};
 use xshell::{cmd, Shell};
 
 /// Cross-platform setup script
@@ -25,7 +25,19 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    Setup,
+    Setup(SubArgs),
+    Run(RunCmd),
+}
+
+#[derive(Args, Debug)]
+struct RunCmd {
+    #[arg(short, long)]
+    debug: bool,
+}
+
+#[derive(Args, Debug)]
+struct SubArgs {
+    name: Option<String>,
 }
 
 const QEMU_VERSION: &str = "9.2.0";
@@ -195,6 +207,45 @@ fn setup() -> Result<()> {
     Ok(())
 }
 
+fn run_qemu(extra_args: Option<Vec<&str>>) -> Result<()> {
+    let paths = PATHS.get().unwrap();
+
+    let _ = env::set_current_dir(&paths.qemu_build_dir);
+
+    let qemu_bin = paths.qemu_bin.as_str();
+    let image_dir = paths.riscv_images_dir.as_str();
+    let qemu_args = format!(
+        r#"
+        -machine virt
+        -nographic
+        -smp 4
+        -m 2G
+        -serial mon:stdio
+        -semihosting-config enable=on
+        -bios {image_dir}/fw_jump.bin
+        "#
+    );
+
+    let mut qemu_args: Vec<_> = qemu_args.split_whitespace().collect();
+
+    if let Some(extra) = extra_args {
+        for arg in extra {
+            qemu_args.push(arg);
+        }
+    }
+
+    println!("{qemu_args:?}");
+
+    let mut child = Command::new(qemu_bin)
+        .args(qemu_args)
+        .spawn()
+        .expect("Failed to launch target: {qemu_bin} {qemu_args]");
+
+    let _ = child.wait()?;
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
 
@@ -204,8 +255,12 @@ fn main() -> Result<()> {
     PATHS.set(paths).unwrap();
 
     match &cli.command {
-        Some(Commands::Setup) => {
+        Some(Commands::Setup(_)) => {
             setup()?;
+        }
+        Some(Commands::Run(runcmd)) => {
+            let extra_args = runcmd.debug.then(|| vec!["-s", "-S"]);
+            run_qemu(extra_args)?;
         }
         None => {
             println!("No command provided");
