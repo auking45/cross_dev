@@ -44,6 +44,7 @@ const QEMU_VERSION: &str = "9.2.0";
 
 #[derive(Debug)]
 struct Paths {
+    pub root_dir: String,
     pub work_dir: String,
     pub common_dir: String,
     pub toolchain_dir: String,
@@ -55,6 +56,8 @@ struct Paths {
     pub qemu_build_dir: String,
     pub qemu_bin: String,
     pub opensbi_dir: String,
+    pub linux_dir: String,
+    pub linux_build_dir: String,
 }
 
 impl Paths {
@@ -72,8 +75,11 @@ impl Paths {
         let qemu_build_dir = format!("{riscv_dir}/qemu/build");
         let qemu_bin = format!("{qemu_build_dir}/qemu-system-riscv64");
         let opensbi_dir = format!("{riscv_dir}/opensbi");
+        let linux_dir = format!("{common_dir}/linux");
+        let linux_build_dir = format!("{riscv_dir}/linux/build");
 
         Self {
+            root_dir,
             work_dir,
             common_dir,
             toolchain_dir,
@@ -85,6 +91,8 @@ impl Paths {
             qemu_build_dir,
             qemu_bin,
             opensbi_dir,
+            linux_dir,
+            linux_build_dir,
         }
     }
 }
@@ -189,6 +197,57 @@ fn prepare_opensbi() -> Result<()> {
     Ok(())
 }
 
+fn prepare_linux() -> Result<()> {
+    let mut sh = Shell::new()?;
+    let paths = PATHS.get().unwrap();
+
+    println!("🚀 Preparing Linux...");
+
+    let repo = "https://github.com/Rust-for-Linux/linux.git";
+    let branch = "rust-next";
+    let linux_dir = paths.linux_dir.as_str();
+    let linux_build_dir = paths.linux_build_dir.as_str();
+
+    if !sh.path_exists(linux_dir) {
+        cmd!(
+            sh,
+            "git clone --depth 1 -b {branch} --single-branch {repo} {linux_dir}"
+        )
+        .run_echo()?;
+    }
+
+    sh.create_dir(linux_build_dir)?;
+    sh.set_current_dir(linux_build_dir);
+
+    let envs = [
+        ("ARCH", "riscv"),
+        ("CROSS_COMPILE", &paths.riscv_cross_toolchain),
+    ];
+
+    for (k, v) in envs {
+        sh.set_var(k, v)
+    }
+
+    cmd!(sh, "make O={linux_build_dir} -C {linux_dir} defconfig").run_echo()?;
+
+    // if there are extra configs
+    let script_dir = paths.root_dir.as_str();
+    cmd!(sh, "{linux_dir}/scripts/kconfig/merge_config.sh .config {script_dir}/configs/linux/extra.config")
+        .run_echo()?;
+    // Sample command to enable a config
+    // cmd!(sh, "{linux_dir}/scripts/config --file .config --enable CONFIG_XXXXXX").run_echo()?;
+
+    let nproc = cmd!(sh, "nproc").read()?;
+    cmd!(sh, "make -j{nproc}").run_echo()?;
+
+    let riscv_image_dir = paths.riscv_images_dir.as_str();
+    cmd!(sh, "cp -f ./arch/riscv/boot/Image {riscv_image_dir}/").run()?;
+
+    println!("✅ Linux is ready!");
+
+    Ok(())
+}
+
 fn setup() -> Result<()> {
     let sh = Shell::new()?;
 
@@ -203,6 +262,7 @@ fn setup() -> Result<()> {
     prepare_toolchain()?;
     prepare_qemu()?;
     prepare_opensbi()?;
+    prepare_linux()?;
 
     Ok(())
 }
@@ -223,15 +283,16 @@ fn run_qemu(extra_args: Option<Vec<&str>>) -> Result<()> {
         -serial mon:stdio
         -semihosting-config enable=on
         -bios {image_dir}/fw_jump.bin
+        -kernel {image_dir}/Image
         "#
     );
 
     let mut qemu_args: Vec<_> = qemu_args.split_whitespace().collect();
+    qemu_args.push("-append");
+    qemu_args.push("console=ttyS0 ro root=/dev/vda init=/sbin/init");
 
     if let Some(extra) = extra_args {
-        for arg in extra {
-            qemu_args.push(arg);
-        }
+        qemu_args.extend(extra);
     }
 
     println!("{qemu_args:?}");
@@ -239,7 +300,7 @@ fn run_qemu(extra_args: Option<Vec<&str>>) -> Result<()> {
     let mut child = Command::new(qemu_bin)
         .args(qemu_args)
         .spawn()
-        .expect("Failed to launch target: {qemu_bin} {qemu_args]");
+        .expect("Failed to launch target: {qemu_bin} {qemu_args}");
 
     let _ = child.wait()?;
 
