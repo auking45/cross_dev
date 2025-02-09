@@ -29,6 +29,11 @@ enum Commands {
     Run(RunCmd),
     Ssh,
     Gdb,
+    Toolchain,
+    Qemu,
+    Sbi,
+    Linux,
+    Buildroot,
 }
 
 #[derive(Args, Debug)]
@@ -536,6 +541,21 @@ fn main() -> Result<()> {
         }
         Some(Commands::Gdb) => {
             run_gdb()?;
+        }
+        Some(Commands::Toolchain) => {
+            prepare_toolchain()?;
+        }
+        Some(Commands::Qemu) => {
+            prepare_qemu()?;
+        }
+        Some(Commands::Sbi) => {
+            prepare_opensbi()?;
+        }
+        Some(Commands::Linux) => {
+            prepare_linux()?;
+        }
+        Some(Commands::Buildroot) => {
+            prepare_buildroot()?;
         }
         None => {
             println!("No command provided");
