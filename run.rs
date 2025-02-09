@@ -41,6 +41,11 @@ struct SubArgs {
 }
 
 const QEMU_VERSION: &str = "9.2.0";
+const OPENSBI_BIN: &str = "fw_jump.bin";
+const LINUX_BIN: &str = "Image";
+const ROOTFS_BIN: &str = "rootfs.img";
+
+const SSH_PORT: u32 = 12345;
 
 #[derive(Debug)]
 struct Paths {
@@ -58,6 +63,13 @@ struct Paths {
     pub opensbi_dir: String,
     pub linux_dir: String,
     pub linux_build_dir: String,
+    pub buildroot_dir: String,
+    pub br_org_custom_dir: String,
+    pub br_custom_dir: String,
+    pub br_overlay_dir: String,
+    pub br_riscv_dir: String,
+    pub br_riscv_output_dir: String,
+    pub br_riscv_config: String,
 }
 
 impl Paths {
@@ -77,6 +89,13 @@ impl Paths {
         let opensbi_dir = format!("{riscv_dir}/opensbi");
         let linux_dir = format!("{common_dir}/linux");
         let linux_build_dir = format!("{riscv_dir}/linux/build");
+        let buildroot_dir = format!("{common_dir}/buildroot");
+        let br_org_custom_dir = format!("{root_dir}/custom_buildroot");
+        let br_custom_dir = format!("{common_dir}/custom_buildroot");
+        let br_overlay_dir = format!("{br_custom_dir}/board/riscv/overlay");
+        let br_riscv_dir = format!("{riscv_dir}/buildroot");
+        let br_riscv_output_dir = format!("{br_riscv_dir}/output");
+        let br_riscv_config = format!("qemu_riscv64_virt_riscv_defconfig");
 
         Self {
             root_dir,
@@ -93,6 +112,13 @@ impl Paths {
             opensbi_dir,
             linux_dir,
             linux_build_dir,
+            buildroot_dir,
+            br_org_custom_dir,
+            br_custom_dir,
+            br_overlay_dir,
+            br_riscv_dir,
+            br_riscv_output_dir,
+            br_riscv_config,
         }
     }
 }
@@ -188,7 +214,7 @@ fn prepare_opensbi() -> Result<()> {
     let riscv_image_dir = paths.riscv_images_dir.as_str();
     cmd!(
         sh,
-        "cp -f ./build/platform/generic/firmware/fw_jump.bin {riscv_image_dir}/"
+        "cp -f ./build/platform/generic/firmware/{OPENSBI_BIN} {riscv_image_dir}/"
     )
     .run()?;
 
@@ -241,9 +267,75 @@ fn prepare_linux() -> Result<()> {
     cmd!(sh, "make -j{nproc}").run_echo()?;
 
     let riscv_image_dir = paths.riscv_images_dir.as_str();
-    cmd!(sh, "cp -f ./arch/riscv/boot/Image {riscv_image_dir}/").run()?;
+    cmd!(sh, "cp -f ./arch/riscv/boot/{LINUX_BIN} {riscv_image_dir}/").run()?;
 
     println!("✅ Linux is ready!");
+
+    Ok(())
+}
+
+fn build_buildroot() -> Result<()> {
+    let mut sh = Shell::new()?;
+    let paths = PATHS.get().unwrap();
+
+    sh.set_current_dir(&paths.br_riscv_output_dir);
+
+    // Remove any trailing whitespace from PATH which causes buildroot to fail in
+    let clean_path = Command::new("sh")
+        .arg("-c")
+        .arg("echo $PATH | tr -d ' \t\n'")
+        .output()?
+        .stdout;
+    let clean_path = String::from_utf8(clean_path)?.trim().to_string();
+    sh.set_var("PATH", clean_path);
+
+    let nproc = cmd!(sh, "nproc").read()?;
+    cmd!(sh, "make -j{nproc}").run_echo()?;
+
+    let image_dir = paths.riscv_images_dir.as_str();
+    cmd!(sh, "cp ./images/rootfs.ext2 {image_dir}/{ROOTFS_BIN}").run_echo()?;
+
+    Ok(())
+}
+
+fn prepare_buildroot() -> Result<()> {
+    let mut sh = Shell::new()?;
+    let paths = PATHS.get().unwrap();
+
+    println!("🚀 Preparing Buildroot...");
+
+    let repo = "http://github.com/buildroot/buildroot";
+    let branch = "2024.11.1";
+    let buildroot_dir = paths.buildroot_dir.as_str();
+
+    if !sh.path_exists(buildroot_dir) {
+        cmd!(
+            sh,
+            "git clone --depth 1 -b {branch} --single-branch {repo} {buildroot_dir}"
+        )
+        .run_echo()?;
+    }
+
+    let common_dir = paths.common_dir.as_str();
+    let br_org_custom_dir = paths.br_org_custom_dir.as_str();
+    let br_custom_dir = paths.br_custom_dir.as_str();
+    let br_riscv_output_dir = paths.br_riscv_output_dir.as_str();
+    let br_riscv_config = paths.br_riscv_config.as_str();
+
+    sh.create_dir(br_riscv_output_dir)?;
+    sh.set_current_dir(&paths.buildroot_dir);
+
+    // In order not to copy intermediate files into the original overlay directory
+    cmd!(sh, "cp -r {br_org_custom_dir} {common_dir}").run_echo()?;
+    cmd!(
+        sh,
+        "make O={br_riscv_output_dir} BR2_EXTERNAL={br_custom_dir} {br_riscv_config}"
+    )
+    .run_echo()?;
+
+    build_buildroot()?;
+
+    println!("✅ Buildroot is ready!");
 
     Ok(())
 }
@@ -263,6 +355,7 @@ fn setup() -> Result<()> {
     prepare_qemu()?;
     prepare_opensbi()?;
     prepare_linux()?;
+    prepare_buildroot()?;
 
     Ok(())
 }
@@ -282,8 +375,12 @@ fn run_qemu(extra_args: Option<Vec<&str>>) -> Result<()> {
         -m 2G
         -serial mon:stdio
         -semihosting-config enable=on
-        -bios {image_dir}/fw_jump.bin
-        -kernel {image_dir}/Image
+        -bios {image_dir}/{OPENSBI_BIN}
+        -kernel {image_dir}/{LINUX_BIN}
+        -drive file={image_dir}/{ROOTFS_BIN},if=none,format=raw,id=hd0
+        -device virtio-blk-device,drive=hd0
+        -netdev user,id=net0,hostfwd=tcp::{SSH_PORT}-:22
+        -device virtio-net-device,netdev=net0
         "#
     );
 
