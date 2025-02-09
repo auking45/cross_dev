@@ -23,7 +23,7 @@ QEMU_BIN="${QEMU_BUILD_DIR}/qemu-system-riscv64"
 RISCV_DIR="${WORK_DIR}/riscv"
 RISCV_IMAGES_DIR="${RISCV_DIR}/images"
 
-LINUX_BUILD_DIR="${RISCV_DIR}/linux"
+LINUX_BUILD_DIR="${RISCV_DIR}/linux/build"
 
 BUILDROOT_DIR="${COMMON_DIR}/buildroot"
 BR_ORG_CUSTOM_DIR="${SCRIPT_DIR}/custom_buildroot"
@@ -279,6 +279,9 @@ function run_ssh {
 }
 
 function run_gdb {
+    echo "🚀 Running GDB..."
+
+    export GDB_WORK_DIR="${WORK_DIR}"
     gdb-multiarch -x "${GDB_DIR}/.gdbinit" --cd="${GDB_DIR}"
 }
 

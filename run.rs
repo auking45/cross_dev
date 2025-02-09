@@ -28,6 +28,7 @@ enum Commands {
     Setup(SubArgs),
     Run(RunCmd),
     Ssh,
+    Gdb,
 }
 
 #[derive(Args, Debug)]
@@ -73,6 +74,7 @@ struct Paths {
     pub br_riscv_config: String,
     pub ssh_dir: String,
     pub ssh_key: String,
+    pub gdb_dir: String,
 }
 
 impl Paths {
@@ -101,6 +103,7 @@ impl Paths {
         let br_riscv_config = format!("qemu_riscv64_virt_riscv_defconfig");
         let ssh_dir = format!("{br_overlay_dir}/root/.ssh");
         let ssh_key = format!("{ssh_dir}/id_rsa");
+        let gdb_dir = format!("{root_dir}/gdb");
 
         Self {
             root_dir,
@@ -126,6 +129,7 @@ impl Paths {
             br_riscv_config,
             ssh_dir,
             ssh_key,
+            gdb_dir,
         }
     }
 }
@@ -485,6 +489,32 @@ fn run_ssh() -> Result<()> {
     Ok(())
 }
 
+fn run_gdb() -> Result<()> {
+    let paths = PATHS.get().unwrap();
+
+    let gdb_dir = paths.gdb_dir.as_str();
+    let _ = env::set_current_dir(gdb_dir);
+
+    let gdb_bin = "gdb-multiarch";
+    let gdb_args = format!(
+        r#"
+        -x {gdb_dir}/.gdbinit
+        --cd={gdb_dir}
+        "#,
+    );
+    let gdb_args: Vec<_> = gdb_args.split_whitespace().collect();
+
+    let mut child = Command::new(gdb_bin)
+        .args(gdb_args)
+        .env("GDB_WORK_DIR", paths.work_dir.clone())
+        .spawn()
+        .expect("Failed to launch target: {gdb_bin} {gdb_args}");
+
+    let _ = child.wait()?;
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
 
@@ -503,6 +533,9 @@ fn main() -> Result<()> {
         }
         Some(Commands::Ssh) => {
             run_ssh()?;
+        }
+        Some(Commands::Gdb) => {
+            run_gdb()?;
         }
         None => {
             println!("No command provided");

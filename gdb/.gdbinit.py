@@ -4,8 +4,14 @@ import gdb
 # Get current working directory
 cwd = os.getcwd()
 
+# Get the directory from the environment variable
+gdb_work_dir = os.getenv("GDB_WORK_DIR")
+
+if gdb_work_dir is None:
+    raise RuntimeError("GDB_WORK_DIR environment variable is not set")
+
 # Get the directory contains projects
-work_dir = os.path.join(cwd, "../.work/riscv")
+work_dir = os.path.join(gdb_work_dir, "riscv")
 
 # ==============================================
 # Load symbols
@@ -16,7 +22,7 @@ opensbi_path = os.path.join(
 gdb.execute(f"file {opensbi_path}")
 
 symbol_files = [
-    "linux/vmlinux",
+    "linux/build/vmlinux",
 ]
 
 for symbol_file in symbol_files:
