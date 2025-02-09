@@ -9,7 +9,7 @@ xshell = { version = "0.3.0-pre.2" }
 
 use clap::{Args, Parser, Subcommand};
 use color_eyre::eyre::Result;
-use std::{env, process::Command, sync::OnceLock};
+use std::{env, fs::File, io::Write, process::Command, sync::OnceLock};
 use xshell::{cmd, Shell};
 
 /// Cross-platform setup script
@@ -27,6 +27,7 @@ pub struct Cli {
 enum Commands {
     Setup(SubArgs),
     Run(RunCmd),
+    Ssh,
 }
 
 #[derive(Args, Debug)]
@@ -45,7 +46,7 @@ const OPENSBI_BIN: &str = "fw_jump.bin";
 const LINUX_BIN: &str = "Image";
 const ROOTFS_BIN: &str = "rootfs.img";
 
-const SSH_PORT: u32 = 12345;
+const SSH_PORT: &str = "10025";
 
 #[derive(Debug)]
 struct Paths {
@@ -70,6 +71,8 @@ struct Paths {
     pub br_riscv_dir: String,
     pub br_riscv_output_dir: String,
     pub br_riscv_config: String,
+    pub ssh_dir: String,
+    pub ssh_key: String,
 }
 
 impl Paths {
@@ -96,6 +99,8 @@ impl Paths {
         let br_riscv_dir = format!("{riscv_dir}/buildroot");
         let br_riscv_output_dir = format!("{br_riscv_dir}/output");
         let br_riscv_config = format!("qemu_riscv64_virt_riscv_defconfig");
+        let ssh_dir = format!("{br_overlay_dir}/root/.ssh");
+        let ssh_key = format!("{ssh_dir}/id_rsa");
 
         Self {
             root_dir,
@@ -119,6 +124,8 @@ impl Paths {
             br_riscv_dir,
             br_riscv_output_dir,
             br_riscv_config,
+            ssh_dir,
+            ssh_key,
         }
     }
 }
@@ -327,6 +334,9 @@ fn prepare_buildroot() -> Result<()> {
 
     // In order not to copy intermediate files into the original overlay directory
     cmd!(sh, "cp -r {br_org_custom_dir} {common_dir}").run_echo()?;
+
+    prepare_ssh_key()?;
+
     cmd!(
         sh,
         "make O={br_riscv_output_dir} BR2_EXTERNAL={br_custom_dir} {br_riscv_config}"
@@ -336,6 +346,52 @@ fn prepare_buildroot() -> Result<()> {
     build_buildroot()?;
 
     println!("✅ Buildroot is ready!");
+
+    Ok(())
+}
+
+fn prepare_ssh_key() -> Result<()> {
+    let sh = Shell::new()?;
+    let paths = PATHS.get().unwrap();
+
+    let ssh_dir = paths.ssh_dir.as_str();
+    let ssh_key = paths.ssh_key.as_str();
+    let ssh_pub = format!("{ssh_key}.pub");
+    let authorized_keys = format!("{ssh_dir}/authorized_keys");
+
+    sh.create_dir(ssh_dir)?;
+
+    if sh.path_exists(ssh_key) && sh.path_exists("{ssh_dir/authorized_keys}") {
+        println!("SSH key already exists");
+        return Ok(());
+    }
+
+    // Generate SSH key without passphrase
+    let status = Command::new("ssh-keygen")
+        .arg("-t")
+        .arg("rsa")
+        .arg("-N")
+        .arg("")
+        .arg("-f")
+        .arg(ssh_key)
+        .arg("-y")
+        .status()?;
+
+    if !status.success() {
+        return Err(color_eyre::eyre::eyre!("Failed to generate SSH key"));
+    }
+
+    // Create the authorized_keys file if it doesn't exist
+    if !sh.path_exists(&authorized_keys) {
+        File::create(&authorized_keys)?;
+    }
+
+    // Append the public key to the authorized_keys file
+    let mut file = File::options().append(true).open(&authorized_keys)?;
+    let pub_key = std::fs::read_to_string(&ssh_pub)?;
+    writeln!(file, "{}", pub_key)?;
+
+    println!("✅ SSH key is ready!");
 
     Ok(())
 }
@@ -404,6 +460,31 @@ fn run_qemu(extra_args: Option<Vec<&str>>) -> Result<()> {
     Ok(())
 }
 
+fn run_ssh() -> Result<()> {
+    let paths = PATHS.get().unwrap();
+
+    let ssh_bin = "ssh";
+    let ssh_key = paths.ssh_key.as_str();
+    let ssh_args = [
+        "-i",
+        ssh_key,
+        "root@localhost",
+        "-p",
+        SSH_PORT,
+        "-o",
+        "StrictHostKeyChecking no",
+    ];
+
+    let mut child = Command::new(ssh_bin)
+        .args(ssh_args)
+        .spawn()
+        .expect("Failed to connect via ssh: {ssh_bin} {ssh_args:?}");
+
+    let _ = child.wait().unwrap();
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
 
@@ -419,6 +500,9 @@ fn main() -> Result<()> {
         Some(Commands::Run(runcmd)) => {
             let extra_args = runcmd.debug.then(|| vec!["-s", "-S"]);
             run_qemu(extra_args)?;
+        }
+        Some(Commands::Ssh) => {
+            run_ssh()?;
         }
         None => {
             println!("No command provided");
