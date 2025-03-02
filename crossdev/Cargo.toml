@@ -1,0 +1,11 @@
+[package]
+name = "crossdev"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+color-eyre = { version = "0.6" }
+serde = { version = "1.0.217", features = ["derive"] }
+thiserror = { version = "2.0" }
+toml = { version = "0.8" }
+xshell = { version = "0.3.0-pre.2" }

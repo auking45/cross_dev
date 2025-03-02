@@ -1,0 +1,43 @@
+name = "riscv64_defconfig"
+arch = "riscv64"
+build_type = "debug"
+
+# RISC-V toolchain
+[[packages]]
+name = "riscv-toolchain"
+pack_type = "toolchain"
+version = "2025.01.20"
+download_type = "file"
+download = { url = "https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2025.01.20/riscv64-glibc-ubuntu-24.04-llvm-nightly-2025.01.20-nightly.tar.xz" }
+
+# QEMU
+[[packages]]
+name = "qemu"
+pack_type = "qemu"
+version = "9.2.0"
+download_type = "file"
+download = { url = "https://download.qemu.org/qemu-9.2.0.tar.xz" }
+
+# OpenSBI
+[[packages]]
+name = "opensbi"
+pack_type = "opensbi"
+version = "9.2.0"
+download_type = "git"
+download = { url = "https://github.com/riscv-software-src/opensbi.git", branch = "master" }
+
+# Linux kernel
+[[packages]]
+name = "linux"
+pack_type = "linux"
+version = "v1.6"
+download_type = "git"
+download = { url = "https://github.com/Rust-for-Linux/linux.git", branch = "rust-next" }
+
+# Buildroot
+[[packages]]
+name = "buildroot"
+pack_type = "buildroot"
+version = "2024.11.1"
+download_type = "git"
+download = { url = "http://github.com/buildroot/buildroot", branch = "2024.11.1" }
