@@ -370,7 +370,7 @@ fn prepare_ssh_key() -> Result<()> {
 
     sh.create_dir(ssh_dir)?;
 
-    if sh.path_exists(ssh_key) && sh.path_exists("{ssh_dir/authorized_keys}") {
+    if sh.path_exists(ssh_key) && sh.path_exists(authorized_keys.as_str()) {
         println!("SSH key already exists");
         return Ok(());
     }
