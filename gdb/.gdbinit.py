@@ -11,18 +11,18 @@ if gdb_work_dir is None:
     raise RuntimeError("GDB_WORK_DIR environment variable is not set")
 
 # Get the directory contains projects
-work_dir = os.path.join(gdb_work_dir, "riscv")
+work_dir = os.path.join(gdb_work_dir, "builds")
 
 # ==============================================
 # Load symbols
 # ==============================================
 opensbi_path = os.path.join(
-    work_dir, "opensbi/build/platform/generic/firmware/fw_jump.elf"
+    work_dir, "opensbi/platform/generic/firmware/fw_jump.elf"
 )
 gdb.execute(f"file {opensbi_path}")
 
 symbol_files = [
-    "linux/build/vmlinux",
+    "linux/vmlinux",
 ]
 
 for symbol_file in symbol_files:
