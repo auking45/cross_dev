@@ -85,6 +85,32 @@ To run GDB with the prepared environment, use the `run_gdb` task:
 
 You can customize the setup by modifying the `run.sh` script and the configuration files in the `scripts` directory.
 
+## CrossDev Library
+
+The `crossdev` library provides the core functionality for setting up and managing the cross-development environment. It includes modules for handling configurations, toolchains, QEMU, OpenSBI, Linux, and Buildroot.
+
+### Example Usage
+
+Here is an example of how to use the `crossdev` library in your Rust code:
+
+```rust
+use crossdev::{config::*, crossdev::*, utils::*};
+use color_eyre::Result;
+
+fn main() -> Result<()> {
+    color_eyre::install()?;
+
+    let config_path = "path/to/config.toml";
+    let config = read_config_from_file(config_path)?;
+    let mut xdev = CrossDev::new(config)?;
+
+    xdev.setup()?;
+    xdev.run_qemu(None)?;
+
+    Ok(())
+}
+```
+
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
